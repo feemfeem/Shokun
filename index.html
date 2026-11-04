@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Word Clash Party - Realtime Multiplayer</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+    <style>
+        body { font-family: 'Prompt', sans-serif; }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 min-h-screen text-white flex flex-col items-center justify-center p-4">
+
+    <div class="w-full max-w-md bg-white/10 backdrop-blur-md rounded-2xl shadow-2xl p-6 border border-white/20">
+        <!-- HEADER -->
+        <div class="text-center mb-6">
+            <h1 class="text-3xl font-bold bg-gradient-to-r from-yellow-400 to-pink-500 bg-clip-text text-transparent">Word Clash Party</h1>
+            <p class="text-sm text-gray-300">เกมคำศัพท์ปาร์ตี้ 6 คน (Realtime Sync)</p>
+        </div>
+
+        <!-- VIEW 1: LOBBY -->
+        <div id="view-lobby" class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium mb-1">ชื่อของคุณ</label>
+                <input type="text" id="input-name" placeholder="ใส่ชื่อเล่น..." class="w-full px-4 py-2 rounded-xl bg-white/20 border border-white/30 focus:outline-none focus:ring-2 focus:ring-pink-500 text-white placeholder-gray-400">
+            </div>
+            <div>
+                <label class="block text-sm font-medium mb-1">รหัสห้อง (Room Code)</label>
+                <input type="text" id="input-room" placeholder="เช่น PARTY6" value="ROOM6" class="w-full px-4 py-2 rounded-xl bg-white/20 border border-white/30 focus:outline-none focus:ring-2 focus:ring-pink-500 text-white placeholder-gray-400 uppercase">
+            </div>
+            <button onclick="joinRoom()" class="w-full py-3 bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 font-bold rounded-xl shadow-lg transition">
+                เข้าสู่ห้องเกม
+            </button>
+        </div>
+
+        <!-- VIEW 2: WAITING ROOM -->
+        <div id="view-waiting" class="hidden space-y-4 text-center">
+            <h2 class="text-xl font-semibold">ห้อง: <span id="display-room" class="text-yellow-400"></span></h2>
+            <p class="text-sm text-gray-300">รายชื่อผู้เล่นในห้อง (รอเพื่อนให้ครบ 6 คน)</p>
+            <div id="player-list" class="bg-black/30 rounded-xl p-4 space-y-2 min-h-[120px] text-left"></div>
+            <button onclick="hostStartGame()" class="w-full py-3 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 font-bold rounded-xl shadow-lg transition">
+                เริ่มเกมเลย! (Host)
+            </button>
+        </div>
+
+        <!-- VIEW 3: GAMEPLAY -->
+        <div id="view-game" class="hidden space-y-4">
+            <div class="flex justify-between items-center bg-black/30 px-4 py-2 rounded-xl text-sm">
+                <span>รอบที่: <b id="current-round">1</b></span>
+                <span class="text-yellow-400 font-bold"><span id="timer">15</span> วิ</span>
+            </div>
+
+            <div class="bg-gradient-to-r from-purple-800 to-indigo-800 p-4 rounded-2xl text-center shadow-inner border border-white/10">
+                <p class="text-xs text-purple-300 uppercase tracking-widest">ตัวอักษรประจำรอบ</p>
+                <div id="target-letter" class="text-6xl font-extrabold text-yellow-400 my-2">-</div>
+                <p class="text-sm text-gray-200">หมวดหมู่: <b id="target-category" class="text-pink-300">-</b></p>
+            </div>
+
+            <div class="space-y-2">
+                <input type="text" id="input-answer" placeholder="พิมพ์คำตอบของคุณ..." class="w-full px-4 py-3 rounded-xl bg-white/20 border border-white/30 focus:outline-none focus:ring-2 focus:ring-yellow-400 text-white text-lg placeholder-gray-400">
+                <button onclick="submitAnswer()" class="w-full py-3 bg-yellow-500 hover:bg-yellow-600 text-black font-bold rounded-xl shadow-lg transition">
+                    ส่งคำตอบ!
+                </button>
+            </div>
+        </div>
+
+        <!-- VIEW 4: RESULT -->
+        <div id="view-result" class="hidden space-y-4 text-center">
+            <h2 class="text-xl font-bold text-yellow-400">สรุปคำตอบของทุกคน</h2>
+            <div id="answers-container" class="bg-black/30 rounded-xl p-3 space-y-2 text-left max-h-48 overflow-y-auto"></div>
+            <button onclick="hostNextRound()" class="w-full py-3 bg-gradient-to-r from-blue-500 to-indigo-600 font-bold rounded-xl shadow-lg">
+                ไปรอบถัดไป ➔
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // ตั้งค่า Firebase ฟรี (Public Test Database)
+        const firebaseConfig = {
+            databaseURL: "https://wordclash-party-default-rtdb.asia-southeast1.firebasedatabase.app"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        let myName = '';
+        let roomCode = '';
+        let roomRef = null;
+
+        const categories = [
+            { cat: "ผลไม้", letters: ["ก", "จ", "ม", "ส", "อ"] },
+            { cat: "ชื่อเมือง/ประเทศทั่วโลก", letters: ["ล", "ท", "อ", "ป", "จ"] },
+            { cat: "ของกินเล่น / เมนูเส้น", letters: ["ก", "บ", "ผ", "น", "ย"] },
+            { cat: "แบรนด์เนม / ของใช้", letters: ["ซ", "ไอ", "น", "พ", "ส"] }
+        ];
+
+        function joinRoom() {
+            myName = document.getElementById('input-name').value.trim();
+            roomCode = document.getElementById('input-room').value.trim().toUpperCase();
+
+            if (!myName || !roomCode) {
+                alert('กรุณากรอกชื่อและรหัสห้องครับ!');
+                return;
+            }
+
+            roomRef = db.ref('rooms/' + roomCode);
+            
+            // เพิ่มชื่อผู้เล่นเข้าไปใน Firebase
+            roomRef.child('players/' + myName).set(true);
+
+            document.getElementById('display-room').innerText = roomCode;
+            document.getElementById('view-lobby').classList.add('hidden');
+            document.getElementById('view-waiting').classList.remove('hidden');
+
+            // ฟังการเปลี่ยนแปลงผู้เล่น
+            roomRef.child('players').on('value', (snapshot) => {
+                const players = snapshot.val() || {};
+                const listEl = document.getElementById('player-list');
+                listEl.innerHTML = Object.keys(players).map((p, i) => `<div class="py-1 px-2 bg-white/10 rounded text-sm">👤 ผู้เล่น ${i+1}: <b>${p}</b> ${p === myName ? '(คุณ)' : ''}</div>`).join('');
+            });
+
+            // ฟังสถานะเกม
+            roomRef.child('gameState').on('value', (snapshot) => {
+                const state = snapshot.val();
+                if (!state) return;
+
+                if (state.status === 'playing') {
+                    document.getElementById('view-waiting').classList.add('hidden');
+                    document.getElementById('view-result').classList.add('hidden');
+                    document.getElementById('view-game').classList.remove('hidden');
+
+                    document.getElementById('current-round').innerText = state.round;
+                    document.getElementById('target-letter').innerText = state.letter;
+                    document.getElementById('target-category').innerText = state.category;
+                    document.getElementById('input-answer').value = '';
+                } else if (state.status === 'result') {
+                    document.getElementById('view-game').classList.add('hidden');
+                    document.getElementById('view-result').classList.remove('hidden');
+                    loadResults();
+                }
+            });
+        }
+
+        function hostStartGame() {
+            const randomCat = categories[Math.floor(Math.random() * categories.length)];
+            const randomLetter = randomCat.letters[Math.floor(Math.random() * randomCat.letters.length)];
+
+            roomRef.child('gameState').set({
+                status: 'playing',
+                round: 1,
+                letter: randomLetter,
+                category: randomCat.cat
+            });
+        }
+
+        function submitAnswer() {
+            const ans = document.getElementById('input-answer').value.trim();
+            if (!ans) {
+                alert('กรุณากรอกคำตอบก่อนส่ง!');
+                return;
+            }
+            roomRef.child('answers/' + myName).set(ans);
+            alert('ส่งคำตอบเรียบร้อย! รอเพื่อนๆ...');
+        }
+
+        // ให้คนแรกกดจบอร์ดเพื่อดูผลลัพธ์
+        setTimeout(() => {
+            // สามารถเพิ่มปุ่มกดรวมคะแนนได้ตามสะดวก
+        }, 1000);
+    </script>
+</body>
+</html>
