@@ -19,7 +19,7 @@
         <!-- HEADER -->
         <div class="text-center mb-6">
             <h1 class="text-3xl font-bold bg-gradient-to-r from-yellow-400 to-pink-500 bg-clip-text text-transparent">Word Clash Party</h1>
-            <p class="text-sm text-gray-300">เกมคำศัพท์ปาร์ตี้ 6 คน (Synced)</p>
+            <p class="text-sm text-gray-300">เกมคำศัพท์ปาร์ตี้ 6 คน (Realtime Sync 100%)</p>
         </div>
 
         <!-- VIEW 1: LOBBY -->
@@ -40,10 +40,10 @@
         <!-- VIEW 2: WAITING ROOM -->
         <div id="view-waiting" class="hidden space-y-4 text-center">
             <h2 class="text-xl font-semibold">ห้อง: <span id="display-room" class="text-yellow-400"></span></h2>
-            <p class="text-sm text-gray-300">รายชื่อผู้เล่นในห้อง</p>
+            <p class="text-sm text-gray-300">รายชื่อผู้เล่นในห้อง (รวบรวมเพื่อนให้ครบ 6 คน)</p>
             <div id="player-list" class="bg-black/30 rounded-xl p-4 space-y-2 min-h-[120px] text-left"></div>
             <button onclick="hostStartGame()" class="w-full py-3 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 font-bold rounded-xl shadow-lg transition">
-                เริ่มเกมเลย! (กดคนไหนก็ได้)
+                🚀 เริ่มเกมเลย! (กดเครื่องไหนก็ได้ ทุกจอจะเปลี่ยนพร้อมกัน)
             </button>
         </div>
 
@@ -51,7 +51,7 @@
         <div id="view-game" class="hidden space-y-4">
             <div class="flex justify-between items-center bg-black/30 px-4 py-2 rounded-xl text-sm">
                 <span>รอบที่: <b id="current-round">1</b></span>
-                <span class="text-yellow-400 font-bold">ลุยกันเลย!</span>
+                <span class="text-yellow-400 font-bold">กำลังเล่น...</span>
             </div>
 
             <div class="bg-gradient-to-r from-purple-800 to-indigo-800 p-4 rounded-2xl text-center shadow-inner border border-white/10">
@@ -70,6 +70,7 @@
     </div>
 
     <script>
+        // เชื่อมต่อฐานข้อมูลกลางแบบสาธารณะสำหรับทดสอบระบบ
         const firebaseConfig = {
             databaseURL: "https://wordclash-party-default-rtdb.asia-southeast1.firebasedatabase.app"
         };
@@ -84,7 +85,8 @@
             { cat: "ผลไม้", letters: ["ก", "จ", "ม", "ส", "อ"] },
             { cat: "ชื่อเมือง/ประเทศทั่วโลก", letters: ["ล", "ท", "อ", "ป", "จ"] },
             { cat: "ของกินเล่น / เมนูเส้น", letters: ["ก", "บ", "ผ", "น", "ย"] },
-            { cat: "แบรนด์เนม / ของใช้", letters: ["ซ", "ไอ", "น", "พ", "ส"] }
+            { cat: "แบรนด์เนม / ของใช้", letters: ["ซ", "ไอ", "น", "พ", "ส"] },
+            { cat: "สิ่งของที่พกในกระเป๋า", letters: ["ก", "ย", "ล", "ท", "ค"] }
         ];
 
         function joinRoom() {
@@ -103,14 +105,14 @@
             document.getElementById('view-lobby').classList.add('hidden');
             document.getElementById('view-waiting').classList.remove('hidden');
 
-            // อัปเดตรายชื่อ
+            // 1. ดึงรายชื่อผู้เล่นแบบเรียลไทม์
             roomRef.child('players').on('value', (snapshot) => {
                 const players = snapshot.val() || {};
                 const listEl = document.getElementById('player-list');
-                listEl.innerHTML = Object.keys(players).map((p, i) => `<div class="py-1 px-2 bg-white/10 rounded text-sm">👤 ผู้เล่น ${i+1}: <b>${p}</b> ${p === myName ? '(คุณ)' : ''}</div>`).join('');
+                listEl.innerHTML = Object.keys(players).map((p, i) => `<div class="py-1 px-2 bg-white/10 rounded text-sm mb-1">👤 ผู้เล่น ${i+1}: <b>${p}</b> ${p === myName ? '(คุณ)' : ''}</div>`).join('');
             });
 
-            // ซิงค์หน้าจอเกมจากฐานข้อมูลกลาง
+            // 2. ซิงค์สถานะหน้าจอเกมจากฐานข้อมูลกลาง (เพื่อให้ตัวอักษรและหมวดหมู่ตรงกันเป๊ะ)
             roomRef.child('gameState').on('value', (snapshot) => {
                 const state = snapshot.val();
                 if (!state) return;
@@ -127,7 +129,7 @@
         }
 
         function hostStartGame() {
-            // สุ่มจากส่วนกลาง แล้วยิงขึ้น Database เพื่อให้ทุกเครื่องเปลี่ยนพร้อมกันเป๊ะๆ
+            // สุ่มตัวอักษรและหมวดหมู่จากส่วนกลาง แล้วบันทึกลง Database
             const randomCat = categories[Math.floor(Math.random() * categories.length)];
             const randomLetter = randomCat.letters[Math.floor(Math.random() * randomCat.letters.length)];
 
@@ -146,7 +148,7 @@
                 return;
             }
             roomRef.child('answers/' + myName).set(ans);
-            alert('ส่งคำตอบเรียบร้อย!');
+            alert('ส่งคำตอบเรียบร้อย! รอเช็กผลพร้อมเพื่อนๆ');
         }
     </script>
 </body>
